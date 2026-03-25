@@ -104,5 +104,8 @@ def canciones_artista():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Asegúrate de usar host='0.0.0.0' para que el celular lo vea
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    import os
+    # Render asigna un puerto en la variable PORT, si no existe usa el 5000
+    port = int(os.environ.get("PORT", 5000))
+    # host='0.0.0.0' es vital para que sea accesible públicamente
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
