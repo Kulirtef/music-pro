@@ -7,35 +7,9 @@ import requests
 
 app = Flask(__name__)
 
-# --- CONFIGURACIÓN DE COOKIES ---
-# El archivo que me mostraste debe guardarse como 'cookies.txt' en la raíz
-COOKIES_FILE = 'cookies.txt'
-
-# 1. CONFIGURACIÓN DE BÚSQUEDA (Rápida para metadatos)
-OPTS_BUSQUEDA = {
-    'quiet': True,
-    'extract_flat': True, 
-    'force_generic_extractor': False,
-    'nocheckcertificate': True,
-}
-
-# 2. CONFIGURACIÓN DE STREAMING (Optimizada para Render + Cookies)
-OPTS_STREAM = {
-    'format': 'bestaudio/best',
-    'quiet': True,
-    'noplaylist': True,
-    'nocheckcertificate': True,
-    'source_address': '0.0.0.0', # Importante para evitar bloqueos de IP
-    'skip_download': True,
-}
-
-# Aplicar cookies si el archivo existe
-if os.path.exists(COOKIES_FILE):
-    print(f"✅ Cargando cookies desde {COOKIES_FILE}")
-    OPTS_STREAM['cookiefile'] = COOKIES_FILE
-    OPTS_BUSQUEDA['cookiefile'] = COOKIES_FILE
-else:
-    print(f"⚠️ No se encontró {COOKIES_FILE}. YouTube podría bloquear la IP.")
+# Cache para no repetir búsquedas pesadas
+_cache = {}
+_cache_lock = threading.Lock()
 
 ARTISTAS_POR_LETRA = {
     "a": ["Ariana Grande", "Adele", "Anuel AA", "Aventura", "Alejandro Sanz"],
@@ -44,10 +18,25 @@ ARTISTAS_POR_LETRA = {
     "d": ["Daddy Yankee", "Dua Lipa", "Drake", "David Guetta"]
 }
 
+# 1. RUTA DE INICIO
 @app.route('/')
 def home():
-    status = "Con Cookies ✅" if os.path.exists(COOKIES_FILE) else "Sin Cookies ❌"
-    return f"Servidor Música Premium Activo - {status}"
+    return "Servidor Música Premium Activo 🚀 - Hugging Face"
+
+# 2. CONFIGURACIÓN DE STREAMING (CORREGIDA PARA DOCKER)
+ydl_opts_base = {
+    'format': 'bestaudio/best',
+    'quiet': True,
+    'no_warnings': True,
+    'source_address': '0.0.0.0',
+    'skip_download': True,
+    'nocheckcertificate': True,
+}
+
+# IMPORTANTE: En Docker/Hugging Face, asegúrate de que el archivo se llame cookies.txt 
+# y esté en la raíz del repositorio.
+if os.path.exists('cookies.txt'):
+    ydl_opts_base['cookiefile'] = 'cookies.txt'
 
 @app.route('/buscar', methods=['GET'])
 def buscar_musica():
@@ -64,7 +53,12 @@ def buscar_musica():
         })
 
     try:
-        with yt_dlp.YoutubeDL(OPTS_BUSQUEDA) as ydl:
+        # Añadimos las cookies también a la búsqueda para evitar bloqueos aquí
+        search_opts = {'quiet': True, 'extract_flat': True}
+        if 'cookiefile' in ydl_opts_base:
+            search_opts['cookiefile'] = 'cookies.txt'
+
+        with yt_dlp.YoutubeDL(search_opts) as ydl:
             info = ydl.extract_info(f"ytsearch12:{query}", download=False)
             canciones = []
             for entry in (info.get('entries') or []):
@@ -95,12 +89,17 @@ def obtener_canciones_artista():
         data_deezer = res.get('data', [])
 
         if data_deezer:
+            # Usamos las cookies en la búsqueda interna también
+            search_opts = {'quiet': True, 'extract_flat': True}
+            if 'cookiefile' in ydl_opts_base:
+                search_opts['cookiefile'] = 'cookies.txt'
+
             for item in data_deezer:
                 titulo = item['title']
                 artista_real = item['artist']['name']
                 vid_id = ""
                 try:
-                    with yt_dlp.YoutubeDL(OPTS_BUSQUEDA) as ydl:
+                    with yt_dlp.YoutubeDL(search_opts) as ydl:
                         search_query = f"ytsearch1:{titulo} {artista_real}"
                         yt_info = ydl.extract_info(search_query, download=False)
                         if yt_info and 'entries' in yt_info and yt_info['entries']:
@@ -118,7 +117,11 @@ def obtener_canciones_artista():
                     })
         
         if not canciones:
-            with yt_dlp.YoutubeDL(OPTS_BUSQUEDA) as ydl:
+            search_opts = {'quiet': True, 'extract_flat': True}
+            if 'cookiefile' in ydl_opts_base:
+                search_opts['cookiefile'] = 'cookies.txt'
+                
+            with yt_dlp.YoutubeDL(search_opts) as ydl:
                 info = ydl.extract_info(f"ytsearch10:{nombre} canciones", download=False)
                 for entry in (info.get('entries') or []):
                     vid_id = entry.get('id')
@@ -141,20 +144,21 @@ def obtener_musica():
         return jsonify({"error": "Falta el ID"}), 400
 
     try:
-        with yt_dlp.YoutubeDL(OPTS_STREAM) as ydl:
-            # Extraemos la información del video para obtener la URL real de audio
+        with yt_dlp.YoutubeDL(ydl_opts_base) as ydl:
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
             url_real = info.get('url')
             
             if url_real:
                 return jsonify({"url_real": url_real})
             else:
-                return jsonify({"error": "No se encontró el stream de audio"}), 404
+                return jsonify({"error": "No se encontró el stream"}), 404
                 
     except Exception as e:
         print(f"ERROR CRÍTICO: {str(e)}") 
         return jsonify({"error": "Error interno", "detalle": str(e)}), 500
 
+# MODIFICACIÓN FINAL: Puerto 7860 para Hugging Face
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
+    # HF requiere el puerto 7860 obligatoriamente
+    port = int(os.environ.get("PORT", 7860))
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
