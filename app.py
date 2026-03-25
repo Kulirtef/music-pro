@@ -7,9 +7,35 @@ import requests
 
 app = Flask(__name__)
 
-# Cache para no repetir búsquedas pesadas
-_cache = {}
-_cache_lock = threading.Lock()
+# --- CONFIGURACIÓN DE COOKIES ---
+# El archivo que me mostraste debe guardarse como 'cookies.txt' en la raíz
+COOKIES_FILE = 'cookies.txt'
+
+# 1. CONFIGURACIÓN DE BÚSQUEDA (Rápida para metadatos)
+OPTS_BUSQUEDA = {
+    'quiet': True,
+    'extract_flat': True, 
+    'force_generic_extractor': False,
+    'nocheckcertificate': True,
+}
+
+# 2. CONFIGURACIÓN DE STREAMING (Optimizada para Render + Cookies)
+OPTS_STREAM = {
+    'format': 'bestaudio/best',
+    'quiet': True,
+    'noplaylist': True,
+    'nocheckcertificate': True,
+    'source_address': '0.0.0.0', # Importante para evitar bloqueos de IP
+    'skip_download': True,
+}
+
+# Aplicar cookies si el archivo existe
+if os.path.exists(COOKIES_FILE):
+    print(f"✅ Cargando cookies desde {COOKIES_FILE}")
+    OPTS_STREAM['cookiefile'] = COOKIES_FILE
+    OPTS_BUSQUEDA['cookiefile'] = COOKIES_FILE
+else:
+    print(f"⚠️ No se encontró {COOKIES_FILE}. YouTube podría bloquear la IP.")
 
 ARTISTAS_POR_LETRA = {
     "a": ["Ariana Grande", "Adele", "Anuel AA", "Aventura", "Alejandro Sanz"],
@@ -18,24 +44,10 @@ ARTISTAS_POR_LETRA = {
     "d": ["Daddy Yankee", "Dua Lipa", "Drake", "David Guetta"]
 }
 
-# 1. CONFIGURACIÓN RÁPIDA: Solo para obtener metadatos (títulos, IDs)
-OPTS_BUSQUEDA = {
-    'quiet': True,
-    'extract_flat': True, 
-    'force_generic_extractor': False,
-}
-
-# 2. CONFIGURACIÓN DE STREAMING: Optimizada para servidores en la nube (Render)
-OPTS_STREAM = {
-    'format': 'bestaudio/best',  # Forzamos solo audio para evitar saturar la RAM de Render
-    'quiet': True,
-    'noplaylist': True,
-    'nocheckcertificate': True,
-    'source_address': '0.0.0.0', # Obligatorio: fuerza IPv4 para evitar bloqueos de Google
-    'headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-}
+@app.route('/')
+def home():
+    status = "Con Cookies ✅" if os.path.exists(COOKIES_FILE) else "Sin Cookies ❌"
+    return f"Servidor Música Premium Activo - {status}"
 
 @app.route('/buscar', methods=['GET'])
 def buscar_musica():
@@ -88,7 +100,7 @@ def obtener_canciones_artista():
                 artista_real = item['artist']['name']
                 vid_id = ""
                 try:
-                    with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True}) as ydl:
+                    with yt_dlp.YoutubeDL(OPTS_BUSQUEDA) as ydl:
                         search_query = f"ytsearch1:{titulo} {artista_real}"
                         yt_info = ydl.extract_info(search_query, download=False)
                         if yt_info and 'entries' in yt_info and yt_info['entries']:
@@ -128,18 +140,9 @@ def obtener_musica():
     if not video_id:
         return jsonify({"error": "Falta el ID"}), 400
 
-    # Configuración ultra-ligera para evitar el crash en Render
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'no_warnings': True,
-        'source_address': '0.0.0.0', # Fuerza IPv4 para evitar bloqueos
-        'skip_download': True,
-    }
-
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extraemos la información del video
+        with yt_dlp.YoutubeDL(OPTS_STREAM) as ydl:
+            # Extraemos la información del video para obtener la URL real de audio
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
             url_real = info.get('url')
             
@@ -149,13 +152,9 @@ def obtener_musica():
                 return jsonify({"error": "No se encontró el stream de audio"}), 404
                 
     except Exception as e:
-        # Esto imprimirá el error real en la consola de Render
         print(f"ERROR CRÍTICO: {str(e)}") 
-        return jsonify({"error": "Error interno del servidor", "detalle": str(e)}), 500
+        return jsonify({"error": "Error interno", "detalle": str(e)}), 500
 
-# CONFIGURACIÓN FINAL PARA DESPLIEGUE EN RENDER
 if __name__ == '__main__':
-    # Render asigna dinámicamente el puerto; usamos 10000 como respaldo
     port = int(os.environ.get("PORT", 10000))
-    # host='0.0.0.0' permite conexiones externas desde tu App en Bogotá
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
