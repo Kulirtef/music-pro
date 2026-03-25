@@ -128,17 +128,28 @@ def obtener_musica():
     if not video_id:
         return jsonify({"error": "Falta el ID"}), 400
 
+    # Usamos una configuración mínima local para no saturar la RAM
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'no_warnings': True,
+        'force_generic_extractor': False,
+        'skip_download': True,
+    }
+
     try:
-        with yt_dlp.YoutubeDL(OPTS_STREAM) as ydl:
-            # Extraemos la URL real que ExoPlayer puede reproducir
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Solo extraemos la info del video específico
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
             url_real = info.get('url')
+            
             if url_real:
                 return jsonify({"url_real": url_real})
-            else:
-                return jsonify({"error": "No se pudo obtener el stream"}), 404
+            return jsonify({"error": "No se encontró el stream"}), 404
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Esto imprimirá el error real en los logs de Render
+        print(f"Error extrayendo {video_id}: {str(e)}")
+        return jsonify({"error": "Error interno en el servidor"}), 500
 
 # CONFIGURACIÓN FINAL PARA DESPLIEGUE EN RENDER
 if __name__ == '__main__':
