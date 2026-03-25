@@ -128,28 +128,30 @@ def obtener_musica():
     if not video_id:
         return jsonify({"error": "Falta el ID"}), 400
 
-    # Usamos una configuración mínima local para no saturar la RAM
+    # Configuración ultra-ligera para evitar el crash en Render
     ydl_opts = {
         'format': 'bestaudio/best',
         'quiet': True,
         'no_warnings': True,
-        'force_generic_extractor': False,
+        'source_address': '0.0.0.0', # Fuerza IPv4 para evitar bloqueos
         'skip_download': True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Solo extraemos la info del video específico
+            # Extraemos la información del video
             info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
             url_real = info.get('url')
             
             if url_real:
                 return jsonify({"url_real": url_real})
-            return jsonify({"error": "No se encontró el stream"}), 404
+            else:
+                return jsonify({"error": "No se encontró el stream de audio"}), 404
+                
     except Exception as e:
-        # Esto imprimirá el error real en los logs de Render
-        print(f"Error extrayendo {video_id}: {str(e)}")
-        return jsonify({"error": "Error interno en el servidor"}), 500
+        # Esto imprimirá el error real en la consola de Render
+        print(f"ERROR CRÍTICO: {str(e)}") 
+        return jsonify({"error": "Error interno del servidor", "detalle": str(e)}), 500
 
 # CONFIGURACIÓN FINAL PARA DESPLIEGUE EN RENDER
 if __name__ == '__main__':
