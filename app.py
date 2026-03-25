@@ -30,13 +30,14 @@ def _get_from_yt(query: str, max_results: int = 10):
         'format': 'best[ext=mp4]/best',
         'quiet': True,
         'noplaylist': True,
-        # Estas 3 líneas aceleran la primera búsqueda:
-        'extract_flat': False, 
-        'force_generic_extractor': False,
-        'source_address': '0.0.0.0', 
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'extract_flat': False,
+        # Engañamos a YT con un User-Agent moderno
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'nocheckcertificate': True,
+        'ignoreerrors': True,
+        'no_warnings': True,
+        'source_address': '0.0.0.0', # Fuerza el uso de IPv4
     }
-
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             # Realizamos la búsqueda en YouTube
@@ -105,7 +106,6 @@ def canciones_artista():
 
 if __name__ == '__main__':
     import os
-    # Render asigna un puerto en la variable PORT, si no existe usa el 5000
+    # Render usa la variable PORT, si no existe usa 5000 para local
     port = int(os.environ.get("PORT", 5000))
-    # host='0.0.0.0' es vital para que sea accesible públicamente
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
